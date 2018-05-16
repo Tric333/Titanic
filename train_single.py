@@ -199,11 +199,19 @@ if __name__ == '__main__':
     param_grid = [{'classifier':[SVC()],'preprocessing':[StandardScaler()],
                     'classifier__C':[0.1,1],'classifier__gamma':[0.1,1],'classifier__kernel':['poly']},
                    {'preprocessing':[None],'classifier':[RandomForestClassifier()],
-                    'classifier__n_estimators':[100,300,500],'classifier__max_depth':[1,3,5],'classifier__max_features':['log2'],
-                    'classifier__min_samples_leaf':[1,3,5]}]
+                    'classifier__n_estimators':[300,500],'classifier__max_depth':[3,5],'classifier__max_features':['log2'],
+                    'classifier__min_samples_leaf':[3,5]}]
     grid = GridSearchCV(pipe, param_grid, cv = 5, n_jobs = -1, verbose = 2)
     grid.fit(X_train,y_train)
     print('score :{}'.format(grid.score(X_test,y_test)))
+
+    from sklearn.feature_selection import RFE
+    select = RFE(RandomForestClassifier(n_estimators=300,max_depth=3,max_features='log2',min_samples_leaf=3))
+    select.fit(X_train,y_train)
+    X_train_rfe = select.transform(X_train)
+    X_test_rfe = select.transform(X_test)
+    grid.fit(X_train_rfe,y_train)
+    print('score :{}'.format(grid.score(X_test_rfe,y_test)))
 
     '''
     x_train = titanic_train_data_X.values  # Creates an array of the train data
