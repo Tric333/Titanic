@@ -31,14 +31,14 @@ if __name__ == '__main__':
 
     #    Name
     combined_train_test['Title'] = combined_train_test['Name'].map(lambda x: re.compile(', (.*?)\.').findall(x)[0])
-    title_Dict = {}
-    title_Dict.update(dict.fromkeys(['Capt', 'Col', 'Major', 'Dr', 'Rev'], 'Officer'))
-    title_Dict.update(dict.fromkeys(['Don', 'Sir', 'the Countess', 'Dona', 'Lady'], 'Royalty'))
-    title_Dict.update(dict.fromkeys(['Mme', 'Ms', 'Mrs'], 'Mrs'))
-    title_Dict.update(dict.fromkeys(['Mlle', 'Miss'], 'Miss'))
-    title_Dict.update(dict.fromkeys(['Sir','Mr'], 'Mr'))
-    title_Dict.update(dict.fromkeys(['Master', 'Jonkheer'], 'Master'))
-    combined_train_test['Title'] = combined_train_test['Title'].map(title_Dict)
+    # title_Dict = {}
+    # title_Dict.update(dict.fromkeys(['Capt', 'Col', 'Major', 'Dr', 'Rev'], 'Officer'))
+    # title_Dict.update(dict.fromkeys(['Don', 'Sir', 'the Countess', 'Dona', 'Lady'], 'Royalty'))
+    # title_Dict.update(dict.fromkeys(['Mme', 'Ms', 'Mrs'], 'Mrs'))
+    # title_Dict.update(dict.fromkeys(['Mlle', 'Miss'], 'Miss'))
+    # title_Dict.update(dict.fromkeys(['Sir','Mr'], 'Mr'))
+    # title_Dict.update(dict.fromkeys(['Master', 'Jonkheer'], 'Master'))
+    # combined_train_test['Title'] = combined_train_test['Title'].map(title_Dict)title_Dict
 
     combined_train_test['Title'] = pd.factorize(combined_train_test['Title'])[0]
     title_dummies_df = pd.get_dummies(combined_train_test['Title'], prefix='Title')
@@ -198,12 +198,17 @@ if __name__ == '__main__':
     pipe = Pipeline([('preprocessing',StandardScaler()),('classifier',SVC())])
     param_grid = [{'classifier':[SVC()],'preprocessing':[StandardScaler()],
                     'classifier__C':[0.1,1],'classifier__gamma':[0.1,1],'classifier__kernel':['poly']},
-                   {'preprocessing':[None],'classifier':[RandomForestClassifier()],
-                    'classifier__n_estimators':[300,500],'classifier__max_depth':[3,5],'classifier__max_features':['log2'],
-                    'classifier__min_samples_leaf':[3,5]}]
-    grid = GridSearchCV(pipe, param_grid, cv = 5, n_jobs = -1, verbose = 2)
+                   # {'preprocessing':[None],'classifier':[RandomForestClassifier()],
+                   #  'classifier__n_estimators':[300,500],'classifier__max_depth':[3,5],'classifier__max_features':['log2'],
+                   #  'classifier__min_samples_leaf':[3,5]}
+                  ]
+    grid = GridSearchCV(pipe, param_grid, cv = 5, n_jobs = -1)
     grid.fit(X_train,y_train)
+
+    from sklearn.metrics import confusion_matrix
+    print('best score :{}'.format(grid.best_score_))
     print('score :{}'.format(grid.score(X_test,y_test)))
+    print('confusion_natrix :{}'.format(confusion_matrix(y_test,grid.predict(X_test))))
 
     from sklearn.feature_selection import RFE
     select = RFE(RandomForestClassifier(n_estimators=300,max_depth=3,max_features='log2',min_samples_leaf=3))
@@ -211,8 +216,10 @@ if __name__ == '__main__':
     X_train_rfe = select.transform(X_train)
     X_test_rfe = select.transform(X_test)
     grid.fit(X_train_rfe,y_train)
-    print('score :{}'.format(grid.score(X_test_rfe,y_test)))
 
+    print('best score :{}'.format(grid.best_score_))
+    print('score :{}'.format(grid.score(X_test_rfe,y_test)))
+    print('confusion_natrix :{}'.format(confusion_matrix(y_test,grid.predict(X_test_rfe))))
     '''
     x_train = titanic_train_data_X.values  # Creates an array of the train data
     x_test = titanic_test_data_X.values  # Creats an array of the test data
@@ -272,5 +279,5 @@ if __name__ == '__main__':
 
     '''
     #    (4) 预测并生成提交文件
-    StackingSubmission = pd.DataFrame({'PassengerId': PassengerId, 'Survived': grid.predict(titanic_test_data_X)})
+    StackingSubmission = pd.DataFrame({'PassengerId': PassengerId, 'Survived': grid.predict(select.transform(titanic_test_data_X))})
     StackingSubmission.to_csv('StackingSubmission.csv', index=False, sep=',')
