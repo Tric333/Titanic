@@ -48,15 +48,16 @@ if __name__ == '__main__':
     #    Fare
     combined_train_test['Fare'] = combined_train_test[['Fare']].fillna(
         combined_train_test.groupby('Pclass').transform(np.mean))
+    # Group Ticket 团体生存率堪忧 单独拿出来
+    # 团体票 + 高 SibSp 生存率更低 后续添加
     combined_train_test['Group_Ticket'] = combined_train_test.groupby('Ticket')['Fare'].transform('count')
     combined_train_test['Fare'] = combined_train_test['Fare'] / combined_train_test['Group_Ticket']
-    combined_train_test.drop(['Group_Ticket'], axis=1, inplace=True)
 
     combined_train_test['Fare_bin'] = pd.qcut(combined_train_test['Fare'], 5)
     combined_train_test['Fare_bin_id'] = pd.factorize(combined_train_test['Fare_bin'])[0]
     fare_bin_dummies_id = pd.get_dummies(combined_train_test['Fare_bin_id'], prefix='Fare')
     combined_train_test = pd.concat([combined_train_test, fare_bin_dummies_id], axis=1).drop('Fare_bin', axis=1)
-
+    '''
     #    按照价格对同一个Pclass进行二分
     Pclass_mean_fare = combined_train_test.groupby(['Pclass'])['Fare'].mean()
     combined_train_test['Pclass_Fare_Category'] = combined_train_test.apply(
@@ -73,7 +74,7 @@ if __name__ == '__main__':
 
     pclass_dummies_df = pd.get_dummies(combined_train_test['Pclass_Fare_Category'], prefix='Pclass')
     combined_train_test = pd.concat([combined_train_test, pclass_dummies_df], axis=1)
-
+    '''
     #    Pclass 特征化
     combined_train_test['Pclass'] = pd.factorize(combined_train_test['Pclass'])[0]
 
@@ -166,7 +167,7 @@ if __name__ == '__main__':
     # 特征间相关性分析
     Correlation = pd.DataFrame(combined_train_test[['Embarked', 'Sex', 'Title', 'Name_length', 'Family_Size',
                                                     'Family_Size_Category', 'Fare', 'Fare_bin_id', 'Pclass',
-                                                    'Pclass_Fare_Category', 'Age', 'Ticket_Letter', 'Cabin']])
+                                                    'Age', 'Ticket_Letter', 'Cabin']])
 
     # 输入模型前的一些处理
     #    1. 一些数据的正则化 —— 正则化应在管道内进行，否则会污染数据
@@ -178,7 +179,7 @@ if __name__ == '__main__':
 
     #    2. 弃掉无用特征
     combined_data_backup = combined_train_test
-    combined_train_test.drop(['PassengerId', 'Embarked', 'Sex', 'Name', 'Title', 'Fare_bin_id', 'Pclass_Fare_Category',
+    combined_train_test.drop(['PassengerId', 'Embarked', 'Sex', 'Name', 'Title', 'Fare_bin_id',
                               'Parch', 'SibSp', 'Family_Size_Category', 'Ticket'], axis=1, inplace=True)
 
     #    3. 将训练数据和测试数据分开：
@@ -191,6 +192,8 @@ if __name__ == '__main__':
     #    (1) 利用不同的模型来对特征进行筛选，选出较为重要的特征：
 
     #    (2) 依据我们筛选出的特征构建训练集和测试集
+    from sklearn.metrics import completeness_score
+    from sklearn.metrics import classification_report
     X_train,X_test,y_train,y_test = train_test_split(titanic_train_data_X,titanic_train_data_Y,random_state=0)
 
     #管道搜索模型参数
@@ -209,6 +212,7 @@ if __name__ == '__main__':
     print('best score :{}'.format(grid.best_score_))
     print('score :{}'.format(grid.score(X_test,y_test)))
     print('confusion_natrix :{}'.format(confusion_matrix(y_test,grid.predict(X_test))))
+    print(classification_report(y_test,grid.predict(X_test),target_names=['not survived','survived']))
 
     from sklearn.feature_selection import RFE
     select = RFE(RandomForestClassifier(n_estimators=300,max_depth=3,max_features='log2',min_samples_leaf=3))
@@ -220,6 +224,7 @@ if __name__ == '__main__':
     print('best score :{}'.format(grid.best_score_))
     print('score :{}'.format(grid.score(X_test_rfe,y_test)))
     print('confusion_natrix :{}'.format(confusion_matrix(y_test,grid.predict(X_test_rfe))))
+    print(classification_report(y_test,grid.predict(X_test_rfe),target_names=['not survived','survived']))
     '''
     x_train = titanic_train_data_X.values  # Creates an array of the train data
     x_test = titanic_test_data_X.values  # Creats an array of the test data
