@@ -18,6 +18,9 @@ if __name__ == '__main__':
     combined_train_test = pd.concat([train_df_org, test_df_org], ignore_index=True)
     PassengerId = test_df_org['PassengerId']
 
+    def dummies_process(obj, str):
+        return pd.concat([obj,pd.get_dummies(obj[str], prefix = str)], axis = 'columns').drop(str, axis = 1)
+
     # 数据预处理
     #    Embarked
     combined_train_test['Embarked'].fillna(combined_train_test['Embarked'].mode().values[0], inplace = True)
@@ -155,7 +158,7 @@ if __name__ == '__main__':
         missing_age_test.drop(['Age_GB', 'Age_RF'], axis=1, inplace=True)
         return missing_age_test
 
-    combined_train_test.loc[(completeness_score()bined_train_test['Age'].isnull()), 'Age'] = fill_age(
+    combined_train_test.loc[(combined_train_test['Age'].isnull()), 'Age'] = fill_age(
         missing_age_train.drop(['Age'], axis=1),missing_age_train['Age'],missing_age_test.drop(['Age'], axis=1))
 
     #   Ticket
@@ -231,6 +234,9 @@ if __name__ == '__main__':
     print('score :{}'.format(grid.score(X_test_rfe,y_test)))
     print('confusion_natrix :{}'.format(confusion_matrix(y_test,grid.predict(X_test_rfe))))
     print(classification_report(y_test,grid.predict(X_test_rfe),target_names=['not survived','survived']))
+    StackingSubmission = pd.DataFrame({'PassengerId': PassengerId, 'Survived': grid.predict(select.transform(titanic_test_data_X))})
+    StackingSubmission.to_csv('StackingSubmission.csv', index=False, sep=',')
+
     '''
     x_train = titanic_train_data_X.values  # Creates an array of the train data
     x_test = titanic_test_data_X.values  # Creats an array of the test data
@@ -290,6 +296,3 @@ if __name__ == '__main__':
 
     '''
     #    (4) 预测并生成提交文件
-    grid.fit(titanic_train_data_X,titanic_train_data_Y)
-    StackingSubmission = pd.DataFrame({'PassengerId': PassengerId, 'Survived': grid.predict(select.transform(titanic_test_data_X))})
-    StackingSubmission.to_csv('StackingSubmission.csv', index=False, sep=',')
