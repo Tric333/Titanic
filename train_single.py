@@ -8,6 +8,7 @@ if __name__ == '__main__':
     from sklearn.svm import *
     from sklearn.preprocessing import *
     from sklearn.pipeline import *
+    from sklearn.pipeline import make_pipeline
     from sklearn.model_selection import *
     from sklearn.ensemble import *
     # 正式流程
@@ -31,15 +32,6 @@ if __name__ == '__main__':
 
     #    Name
     combined_train_test['Title'] = combined_train_test['Name'].map(lambda x: re.compile(', (.*?)\.').findall(x)[0])
-    # title_Dict = {}
-    # title_Dict.update(dict.fromkeys(['Capt', 'Col', 'Major', 'Dr', 'Rev'], 'Officer'))
-    # title_Dict.update(dict.fromkeys(['Don', 'Sir', 'the Countess', 'Dona', 'Lady'], 'Royalty'))
-    # title_Dict.update(dict.fromkeys(['Mme', 'Ms', 'Mrs'], 'Mrs'))
-    # title_Dict.update(dict.fromkeys(['Mlle', 'Miss'], 'Miss'))
-    # title_Dict.update(dict.fromkeys(['Sir','Mr'], 'Mr'))
-    # title_Dict.update(dict.fromkeys(['Master', 'Jonkheer'], 'Master'))
-    # combined_train_test['Title'] = combined_train_test['Title'].map(title_Dict)title_Dict
-
     combined_train_test['Title'] = pd.factorize(combined_train_test['Title'])[0]
     title_dummies_df = pd.get_dummies(combined_train_test['Title'], prefix='Title')
     combined_train_test = pd.concat([combined_train_test, title_dummies_df], axis=1)
@@ -52,6 +44,7 @@ if __name__ == '__main__':
     # 团体票 + 高 SibSp 生存率更低 后续添加
     combined_train_test['Group_Ticket'] = combined_train_test.groupby('Ticket')['Fare'].transform('count')
     combined_train_test['Fare'] = combined_train_test['Fare'] / combined_train_test['Group_Ticket']
+    #combined_train_test.drop('Group_Ticket',axis = 1 , inplace = True)
 
     combined_train_test['Fare_bin'] = pd.qcut(combined_train_test['Fare'], 5)
     combined_train_test['Fare_bin_id'] = pd.factorize(combined_train_test['Fare_bin'])[0]
@@ -109,37 +102,48 @@ if __name__ == '__main__':
 
     from sklearn.ensemble import GradientBoostingRegressor
     from sklearn.ensemble import RandomForestRegressor
+    from sklearn.linear_model import LinearRegression
 
+    def fill_age(X_data,y_data,X_pre):
+        X_train, X_test, y_train, y_test = train_test_split(X_data, y_data, random_state=0)
+        pipe = Pipeline([('preprocessing',StandardScaler()),('classifier',RandomForestRegressor(random_state=42))])
+        param_grid = {'classifier__n_estimators':[100,300,500],'classifier__max_depth':[1,3,5],'classifier__random_state':[0],
+                      'classifier__min_samples_leaf':[1,3,5],'classifier__n_jobs':[-1]}
+        grid = GridSearchCV(pipe,param_grid,cv=5,verbose =2)
+        grid.fit(X_train,y_train)
+        print('Age feature Best RF Params:' + str(grid.best_params_))
+        print('Age feature Best RF Score:' + str(grid.best_score_))
+        print('Score: {}'.format(grid.score(X_test, y_test)))
+        return grid.predict(X_pre)
 
-    def fill_missing_age(missing_age_train, missing_age_test):
-        missing_age_train_X = missing_age_train.drop(['Age'], axis=1)
-        missing_age_train_Y = missing_age_train['Age']
-        missing_age_test_X = missing_age_test.drop(['Age'], axis=1)
-
+    def fill_missing_age(X_train,y_train,X_test):
+        std = StandardScaler()
+        X_train = std.fit_transform(X_train)
+        X_test = std.transform(X_test)
         # mode 1 gbm
         gbm_reg = GradientBoostingRegressor(random_state=42)
-        gbm_reg_param_grid = {'n_estimators': [2000], 'max_depth': [8], 'learning_rate': [0.01]}
+        gbm_reg_param_grid = {'n_estimators': [200], 'max_depth': [8], 'learning_rate': [0.01]}
         gbm_reg_grid = GridSearchCV(gbm_reg, gbm_reg_param_grid, cv=10, verbose=1,
                                                     scoring='neg_mean_squared_error')
-        gbm_reg_grid.fit(missing_age_train_X, missing_age_train_Y)
+        gbm_reg_grid.fit(X_train, y_train)
         print('Age feature Best GB Params:' + str(gbm_reg_grid.best_params_))
         print('Age feature Best GB Score:' + str(gbm_reg_grid.best_score_))
         print('GB Train Error for "Age" Feature Regressor:' + str(
-            gbm_reg_grid.score(missing_age_train_X, missing_age_train_Y)))
-        missing_age_test.loc[:, 'Age_GB'] = gbm_reg_grid.predict(missing_age_test_X)
+            gbm_reg_grid.score(X_train, y_train)))
+        missing_age_test.loc[:, 'Age_GB'] = gbm_reg_grid.predict(X_test)
         print(missing_age_test['Age_GB'][:4])
 
         # mode 2 rf
         rf_reg = GradientBoostingRegressor(random_state=42)
-        rf_reg_param_grid = {'n_estimators': [2000], 'max_depth': [5], 'random_state': [0]}
+        rf_reg_param_grid = {'n_estimators': [200], 'max_depth': [5], 'random_state': [0]}
         rf_reg_grid = GridSearchCV(rf_reg, rf_reg_param_grid, cv=10, verbose=1,
                                                    scoring='neg_mean_squared_error')
-        rf_reg_grid.fit(missing_age_train_X, missing_age_train_Y)
+        rf_reg_grid.fit(X_train, y_train)
         print('Age feature Best RF Params:' + str(rf_reg_grid.best_params_))
         print('Age feature Best RF Score:' + str(rf_reg_grid.best_score_))
         print('RF Train Error for "Age" Feature Regressor:' + str(
-            rf_reg_grid.score(missing_age_train_X, missing_age_train_Y)))
-        missing_age_test.loc[:, 'Age_RF'] = rf_reg_grid.predict(missing_age_test_X)
+            rf_reg_grid.score(X_train, y_train)))
+        missing_age_test.loc[:, 'Age_RF'] = rf_reg_grid.predict(X_test)
         print(missing_age_test['Age_RF'][:4])
 
         # two models merge
@@ -151,9 +155,8 @@ if __name__ == '__main__':
         missing_age_test.drop(['Age_GB', 'Age_RF'], axis=1, inplace=True)
         return missing_age_test
 
-
-    combined_train_test.loc[(combined_train_test['Age'].isnull()), 'Age'] = fill_missing_age(missing_age_train,
-                                                                                             missing_age_test)
+    combined_train_test.loc[(completeness_score()bined_train_test['Age'].isnull()), 'Age'] = fill_age(
+        missing_age_train.drop(['Age'], axis=1),missing_age_train['Age'],missing_age_test.drop(['Age'], axis=1))
 
     #   Ticket
     combined_train_test['Ticket_Letter'] = combined_train_test['Ticket'].str.split().str[0].apply(
@@ -213,6 +216,9 @@ if __name__ == '__main__':
     print('score :{}'.format(grid.score(X_test,y_test)))
     print('confusion_natrix :{}'.format(confusion_matrix(y_test,grid.predict(X_test))))
     print(classification_report(y_test,grid.predict(X_test),target_names=['not survived','survived']))
+
+    StackingSubmission = pd.DataFrame({'PassengerId': PassengerId, 'Survived': grid.predict(titanic_test_data_X)})
+    StackingSubmission.to_csv('StackingSubmission_without_RFE.csv', index=False, sep=',')
 
     from sklearn.feature_selection import RFE
     select = RFE(RandomForestClassifier(n_estimators=300,max_depth=3,max_features='log2',min_samples_leaf=3))
@@ -284,5 +290,6 @@ if __name__ == '__main__':
 
     '''
     #    (4) 预测并生成提交文件
+    grid.fit(titanic_train_data_X,titanic_train_data_Y)
     StackingSubmission = pd.DataFrame({'PassengerId': PassengerId, 'Survived': grid.predict(select.transform(titanic_test_data_X))})
     StackingSubmission.to_csv('StackingSubmission.csv', index=False, sep=',')
