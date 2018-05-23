@@ -11,6 +11,7 @@ if __name__ == '__main__':
     from sklearn.pipeline import make_pipeline
     from sklearn.model_selection import *
     from sklearn.ensemble import *
+    from data_preprocess import *
     # 正式流程
     train_df_org = pd.read_csv('data/train.csv')
     test_df_org = pd.read_csv('data/test.csv')
@@ -18,41 +19,55 @@ if __name__ == '__main__':
     combined_train_test = pd.concat([train_df_org, test_df_org], ignore_index=True)
     PassengerId = test_df_org['PassengerId']
 
-    def dummies_process(obj, str):
-        return pd.concat([obj,pd.get_dummies(obj[str], prefix = str)], axis = 'columns').drop(str, axis = 1)
 
     # 数据预处理
     #    Embarked
     combined_train_test['Embarked'].fillna(combined_train_test['Embarked'].mode().values[0], inplace = True)
-    combined_train_test['Embarked'] = pd.factorize(combined_train_test['Embarked'])[0]
-    emb_dummies_df = pd.get_dummies(combined_train_test['Embarked'], prefix='Embarked')
-    combined_train_test = pd.concat([combined_train_test, emb_dummies_df], axis='columns')
-
-    #    Sex
-    combined_train_test['Sex'] = pd.factorize(combined_train_test['Sex'])[0]
-    sex_dummines_df = pd.get_dummies(combined_train_test['Sex'], prefix='Sex')
-    combined_train_test = pd.concat([combined_train_test, sex_dummines_df], axis='columns')
 
     #    Name
     combined_train_test['Title'] = combined_train_test['Name'].map(lambda x: re.compile(', (.*?)\.').findall(x)[0])
-    combined_train_test['Title'] = pd.factorize(combined_train_test['Title'])[0]
-    title_dummies_df = pd.get_dummies(combined_train_test['Title'], prefix='Title')
-    combined_train_test = pd.concat([combined_train_test, title_dummies_df], axis=1)
+    #    Name_length
     combined_train_test['Name_length'] = combined_train_test['Name'].map(len)
-
     #    Fare
     combined_train_test['Fare'] = combined_train_test[['Fare']].fillna(
         combined_train_test.groupby('Pclass').transform(np.mean))
+    #    Parch and SibSp
+    #    Family Size
+    def family_size_category(family_size):
+        if family_size <= 1:
+            return 'Signal'
+        elif family_size <= 4:
+            return 'Small_Family'
+        else:
+            return 'Big_Family'
+
+    combined_train_test['Family_Size'] = combined_train_test['Parch'] + combined_train_test['SibSp'] + 1
+    combined_train_test['Family_Size_Category'] = combined_train_test['Family_Size'].apply(family_size_category)
+    le_family = LabelEncoder()
+    le_family.fit(np.array(['Signal', 'Small_Family', 'Big_Family']))
+    combined_train_test['Family_Size_Category'] = le_family.transform(combined_train_test['Family_Size_Category'])
+
     # Group Ticket 团体生存率堪忧 单独拿出来
     # 团体票 + 高 SibSp 生存率更低 后续添加
     combined_train_test['Group_Ticket'] = combined_train_test.groupby('Ticket')['Fare'].transform('count')
     combined_train_test['Fare'] = combined_train_test['Fare'] / combined_train_test['Group_Ticket']
-    #combined_train_test.drop('Group_Ticket',axis = 1 , inplace = True)
 
+    #    fare_bin
     combined_train_test['Fare_bin'] = pd.qcut(combined_train_test['Fare'], 5)
-    combined_train_test['Fare_bin_id'] = pd.factorize(combined_train_test['Fare_bin'])[0]
-    fare_bin_dummies_id = pd.get_dummies(combined_train_test['Fare_bin_id'], prefix='Fare')
-    combined_train_test = pd.concat([combined_train_test, fare_bin_dummies_id], axis=1).drop('Fare_bin', axis=1)
+
+    #   Ticket
+    combined_train_test['Ticket_Letter'] = combined_train_test['Ticket'].str.split().str[0].apply(
+        lambda x: 'U0' if x.isnumeric() else x)
+
+    #   Cabin
+    combined_train_test['Cabin'].fillna('U0', inplace=True)
+    combined_train_test['Cabin'] = combined_train_test['Cabin'].apply(lambda x: 0 if x == 'U0' else 1)
+
+    #   factorize: Embarked Sex Title Fare_bin Pclass
+    #   dummies : Embarked Sex Title Fare_bin Pclass
+    combined_train_test = factorize_process(combined_train_test, ['Embarked','Sex','Title','Fare_bin','Pclass','Ticket_Letter'])
+    combined_train_test = dummies_process(combined_train_test, ['Embarked','Sex','Title','Fare_bin','Family_Size_Category'])
+
     '''
     #    按照价格对同一个Pclass进行二分
     Pclass_mean_fare = combined_train_test.groupby(['Pclass'])['Fare'].mean()
@@ -71,35 +86,10 @@ if __name__ == '__main__':
     pclass_dummies_df = pd.get_dummies(combined_train_test['Pclass_Fare_Category'], prefix='Pclass')
     combined_train_test = pd.concat([combined_train_test, pclass_dummies_df], axis=1)
     '''
-    #    Pclass 特征化
-    combined_train_test['Pclass'] = pd.factorize(combined_train_test['Pclass'])[0]
-
-    #    Parch and SibSp
-    combined_train_test['Family_Size'] = combined_train_test['Parch'] + combined_train_test['SibSp'] + 1
-
-
-    def family_size_category(family_size):
-        if family_size <= 1:
-            return 'Signal'
-        elif family_size <= 4:
-            return 'Small_Family'
-        else:
-            return 'Big_Family'
-
-
-    combined_train_test['Family_Size_Category'] = combined_train_test['Family_Size'].apply(family_size_category)
-    le_family = LabelEncoder()
-    le_family.fit(np.array(['Signal', 'Small_Family', 'Big_Family']))
-    combined_train_test['Family_Size_Category'] = le_family.transform(combined_train_test['Family_Size_Category'])
-
-    family_size_dummies_df = pd.get_dummies(combined_train_test['Family_Size_Category'], prefix='Family_Size_Category')
-    combined_train_test = pd.concat([combined_train_test, family_size_dummies_df], axis=1)
 
     #    Age
-
-    missing_age_df = pd.DataFrame(combined_train_test[[
-        'Age', 'Embarked', 'Sex', 'Title', 'Name_length', 'Family_Size', 'Family_Size_Category', 'Fare', 'Fare_bin_id',
-        'Pclass']])
+    #    2. 弃掉无用特征
+    missing_age_df = combined_train_test.drop(['PassengerId','Name', 'Parch', 'SibSp','Ticket'], axis=1)
     missing_age_train = missing_age_df[missing_age_df['Age'].notnull()]
     missing_age_test = missing_age_df[missing_age_df['Age'].isnull()]
 
@@ -122,15 +112,6 @@ if __name__ == '__main__':
     combined_train_test.loc[(combined_train_test['Age'].isnull()), 'Age'] = fill_age(
         missing_age_train.drop(['Age'], axis=1),missing_age_train['Age'],missing_age_test.drop(['Age'], axis=1))
 
-    #   Ticket
-    combined_train_test['Ticket_Letter'] = combined_train_test['Ticket'].str.split().str[0].apply(
-        lambda x: 'U0' if x.isnumeric() else x)
-    combined_train_test['Ticket_Letter'] = pd.factorize(combined_train_test['Ticket_Letter'])[0]
-
-    #   Cabin
-    combined_train_test['Cabin'].fillna('U0', inplace=True)
-    combined_train_test['Cabin'] = combined_train_test['Cabin'].apply(lambda x: 0 if x == 'U0' else 1)
-
     # 输入模型前的一些处理
     #    1. 一些数据的正则化 —— 正则化应在管道内进行，否则会污染数据
     # from sklearn import preprocessing
@@ -140,8 +121,8 @@ if __name__ == '__main__':
     #     combined_train_test[['Age', 'Fare', 'Name_length']])
 
     #    2. 弃掉无用特征
-    combined_data_backup = combined_train_test
-    combined_train_test.drop(['PassengerId', 'Embarked', 'Sex', 'Name', 'Title', 'Fare_bin_id',
+    combined_data_backup = combined_train_test.copy()
+    combined_train_test.drop(['PassengerId', 'Embarked', 'Sex', 'Name', 'Title', 'Fare_bin',
                               'Parch', 'SibSp', 'Family_Size_Category', 'Ticket'], axis=1, inplace=True)
 
     #    3. 将训练数据和测试数据分开：
