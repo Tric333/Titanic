@@ -5,14 +5,28 @@ if __name__ == '__main__':
     import numpy as np
     import seaborn as sns;sns.set()
     import re
-    from sklearn.svm import *
+
+    #data process
     from sklearn.preprocessing import *
+    from sklearn.feature_selection import RFE
+    from data_preprocess import *
+
+    #model import
+    from sklearn.svm import *
+    from sklearn.ensemble import *
+    from sklearn.linear_model import LinearRegression
+
+    #model validation
+    from sklearn.model_selection import *
+    from sklearn.metrics import completeness_score
+    from sklearn.metrics import classification_report
+
+    #model compose
     from sklearn.pipeline import *
     from sklearn.pipeline import make_pipeline
-    from sklearn.model_selection import *
-    from sklearn.ensemble import *
-    from data_preprocess import *
-    # 正式流程
+
+
+    # 正式流程 - load data
     train_df_org = pd.read_csv('data/train.csv')
     test_df_org = pd.read_csv('data/test.csv')
     test_df_org['Survived'] = 0
@@ -96,10 +110,6 @@ if __name__ == '__main__':
     missing_age_train = missing_age_df[missing_age_df['Age'].notnull()]
     missing_age_test = missing_age_df[missing_age_df['Age'].isnull()]
 
-    from sklearn.ensemble import GradientBoostingRegressor
-    from sklearn.ensemble import RandomForestRegressor
-    from sklearn.linear_model import LinearRegression
-
     def fill_age(X_data,y_data,X_pre):
         X_train, X_test, y_train, y_test = train_test_split(X_data, y_data, random_state=0)
         pipe = Pipeline([('preprocessing',StandardScaler()),('classifier',RandomForestRegressor(random_state=42))])
@@ -116,14 +126,8 @@ if __name__ == '__main__':
         missing_age_train.drop(['Age'], axis=1),missing_age_train['Age'],missing_age_test.drop(['Age'], axis=1))
 
     # 输入模型前的一些处理
-    #    1. 一些数据的正则化 —— 正则化应在管道内进行，否则会污染数据
-    # from sklearn import preprocessing
-    #
-    # scale_age_fare = preprocessing.StandardScaler().fit(combined_train_test[['Age', 'Fare', 'Name_length']])
-    # combined_train_test[['Age', 'Fare', 'Name_length']] = scale_age_fare.transform(
-    #     combined_train_test[['Age', 'Fare', 'Name_length']])
-
-    #    2. 弃掉无用特征
+    #    1. 弃掉无用特征
+    #    2. 一些数据的正则化 —— 正则化应在管道内进行，否则会污染数据
     combined_data_backup = combined_train_test.copy()
     combined_train_test.drop(['PassengerId', 'Embarked', 'Sex', 'Name', 'Title', 'Fare_bin',
                               'Parch', 'SibSp', 'Family_Size_Category', 'Ticket'], axis=1, inplace=True)
@@ -134,12 +138,10 @@ if __name__ == '__main__':
     titanic_test_data_X = combined_train_test[891:].drop(['Survived'], axis=1)
 
     # 模型融合及测试
-
     #    (1) 利用不同的模型来对特征进行筛选，选出较为重要的特征：
-
-    #    (2) 依据我们筛选出的特征构建训练集和测试集
-    from sklearn.metrics import completeness_score
-    from sklearn.metrics import classification_report
+    #    (2) 依据我们筛选出的特征构建训练集和测试集 此处不采用 Holdout 而使用分离的KFlod原因:
+    #           1.Holdout没有KFlod验证充分
+    #           2.分离的KFlod可以对各子测试集/验证集进行评估，而cross_val_score 不够直观
     X_train,X_test,y_train,y_test = train_test_split(titanic_train_data_X,titanic_train_data_Y,random_state=0)
 
     #管道搜索模型参数
@@ -176,7 +178,6 @@ if __name__ == '__main__':
                                        'Survived': grid.predict(titanic_test_data_X)})
     StackingSubmission.to_csv('StackingSubmission_without_RFE.csv', index=False, sep=',')
 
-    from sklearn.feature_selection import RFE
     select = RFE(RandomForestClassifier(n_estimators=300,max_depth=3,max_features='log2',min_samples_leaf=3))
     select.fit(X_train,y_train)
     X_train_rfe = select.transform(X_train)
