@@ -1,30 +1,30 @@
 # -*- coding:utf-8 -*-
+PLOT_LEARN_CURVE = False
 if __name__ == '__main__':
+    import time
     import pandas as pd
     import matplotlib.pyplot as plt
     import numpy as np
     import seaborn as sns;sns.set()
     import re
 
-    #data process
-    from sklearn.preprocessing import *
-    from sklearn.feature_selection import RFE
-    from data_preprocess import *
-
-    #model import
-    from sklearn.svm import *
-    from sklearn.ensemble import *
-    from sklearn.linear_model import LinearRegression
-
     #model validation
     from sklearn.model_selection import *
-    from sklearn.metrics import completeness_score
-    from sklearn.metrics import classification_report
+    from sklearn.metrics import *
+    from sklearn.metrics import roc_auc_score
 
     #model compose
     from sklearn.pipeline import *
     from sklearn.pipeline import make_pipeline
 
+    # data process
+    from sklearn.preprocessing import *
+    from sklearn.feature_selection import RFE
+    from sklearn.decomposition import *
+    from data_preprocess import *
+
+    # model import
+    from model.svc_model import *
 
     # 正式流程 - load data
     train_df_org = pd.read_csv('data/train.csv')
@@ -37,7 +37,6 @@ if __name__ == '__main__':
     # 数据预处理
     #    Embarked
     combined_train_test['Embarked'].fillna(combined_train_test['Embarked'].mode().values[0], inplace = True)
-
     #    Name
     combined_train_test['Title'] = combined_train_test['Name'].map(lambda x: re.compile(', (.*?)\.').findall(x)[0])
     #    Name_length
@@ -46,20 +45,9 @@ if __name__ == '__main__':
     combined_train_test['Fare'] = combined_train_test[['Fare']].fillna(
         combined_train_test.groupby('Pclass').transform(np.mean))
     #    Parch and SibSp
-    #    Family Size
-    def family_size_category(family_size):
-        if family_size <= 1:
-            return 'Signal'
-        elif family_size <= 4:
-            return 'Small_Family'
-        else:
-            return 'Big_Family'
-
+    #    Family Size 分为1个人, 2-4人，4人以上
     combined_train_test['Family_Size'] = combined_train_test['Parch'] + combined_train_test['SibSp'] + 1
-    combined_train_test['Family_Size_Category'] = combined_train_test['Family_Size'].apply(family_size_category)
-    le_family = LabelEncoder()
-    le_family.fit(np.array(['Signal', 'Small_Family', 'Big_Family']))
-    combined_train_test['Family_Size_Category'] = le_family.transform(combined_train_test['Family_Size_Category'])
+    combined_train_test['Family_Size_Category'] = pd.cut(combined_train_test.Family_Size,[0,1,4,100])
 
     # Group Ticket 团体生存率堪忧 单独拿出来
     # 团体票 + 高 SibSp 生存率更低 后续添加
@@ -77,10 +65,12 @@ if __name__ == '__main__':
     combined_train_test['Cabin'].fillna('U0', inplace=True)
     combined_train_test['Cabin'] = combined_train_test['Cabin'].apply(lambda x: 0 if x == 'U0' else 1)
 
-    #   factorize: Embarked Sex Title Fare_bin Pclass
-    #   dummies : Embarked Sex Title Fare_bin Pclass
-    combined_train_test = factorize_process(combined_train_test, ['Embarked','Sex','Title','Fare_bin','Pclass','Ticket_Letter'])
-    combined_train_test = dummies_process(combined_train_test, ['Embarked','Sex','Title','Fare_bin','Family_Size_Category'])
+    #   factorize & dummies
+    factorize_items = ['Embarked','Sex','Title','Fare_bin','Pclass','Ticket_Letter','Family_Size_Category']
+    combined_train_test = factorize_process(combined_train_test,factorize_items)
+
+    dummies_items = ['Embarked','Sex','Title','Fare_bin','Family_Size_Category']
+    combined_train_test = dummies_process(combined_train_test,dummies_items)
 
     '''
     #    按照价格对同一个Pclass进行二分
@@ -127,12 +117,11 @@ if __name__ == '__main__':
 
     # 输入模型前的一些处理
     #    1. 弃掉无用特征
-    #    2. 一些数据的正则化 —— 正则化应在管道内进行，否则会污染数据
     combined_data_backup = combined_train_test.copy()
     combined_train_test.drop(['PassengerId', 'Embarked', 'Sex', 'Name', 'Title', 'Fare_bin',
                               'Parch', 'SibSp', 'Family_Size_Category', 'Ticket'], axis=1, inplace=True)
 
-    #    3. 将训练数据和测试数据分开：
+    #    2. 将训练数据和测试数据分开：
     titanic_train_data_X = combined_train_test[:891].drop(['Survived'], axis=1)
     titanic_train_data_Y = combined_train_test[:891]['Survived']
     titanic_test_data_X = combined_train_test[891:].drop(['Survived'], axis=1)
@@ -145,38 +134,43 @@ if __name__ == '__main__':
     X_train,X_test,y_train,y_test = train_test_split(titanic_train_data_X,titanic_train_data_Y,random_state=0)
 
     #管道搜索模型参数
-    from sklearn.ensemble import RandomForestClassifier
     pipe = Pipeline([('preprocessing',StandardScaler()),('classifier',SVC())])
-    param_grid = [{'classifier':[SVC()],'preprocessing':[StandardScaler()],
-                    'classifier__C':[0.1,1],'classifier__gamma':[0.1,1],'classifier__kernel':['poly']},
-                   # {'preprocessing':[None],'classifier':[RandomForestClassifier()],
-                   #  'classifier__n_estimators':[300,500],'classifier__max_depth':[3,5],'classifier__max_features':['log2'],
-                   #  'classifier__min_samples_leaf':[3,5]}
-                  ]
-    grid = GridSearchCV(pipe, param_grid, cv = 5, n_jobs = -1)
+    grid = GridSearchCV(pipe, svc_model1, cv = 5, n_jobs = -1,verbose = 1,scoring = "roc_auc")
     grid.fit(X_train,y_train)
 
-    from sklearn.metrics import confusion_matrix
     print('best score :{}'.format(grid.best_score_))
     print('score :{}'.format(grid.score(X_test,y_test)))
     print('confusion_natrix :{}'.format(confusion_matrix(y_test,grid.predict(X_test))))
     print(classification_report(y_test,grid.predict(X_test),target_names=['not survived','survived']))
-    N, train_lc,val_lc = learning_curve(grid.best_params_['classifier'],
-                                        grid.best_params_['preprocessing'].transform(titanic_train_data_X),
-                                        titanic_train_data_Y,
-                                        cv = 5, train_sizes = np.linspace(0.05,1,100))
-    plt.plot(N, np.mean(train_lc,1), color = 'blue', label = 'training score')
-    plt.plot(N, np.mean(val_lc,1), color = 'red', label = 'validation score')
-    diff = np.mean(train_lc,1) - np.mean(val_lc,1)
-    plt.plot(N, diff, color = 'black', label = 'train - val')
-    plt.ylim(0,1)
-    plt.legend(loc='best')
-    plt.title('dummies')
-    plt.show()
+    train_sizes, train_scores,test_scores = learning_curve(grid.best_params_['classifier'],
+                                                           grid.best_params_['preprocessing'].transform(titanic_train_data_X),
+                                                           titanic_train_data_Y,
+                                                           cv = 5, train_sizes = np.linspace(0.05,1,20))
+    train_mean = np.mean(train_scores, 1)
+    train_std = np.std(train_scores, 1)
+    test_mean = np.mean(test_scores, 1)
+    test_std = np.std(test_scores, 1)
+    diff = train_mean - test_mean
+
+    print('train_scores mean: \n {}\n std :\n{}'.format(train_mean, train_std))
+    print('test_scores mean: \n {}\n std :\n{}'.format(test_mean, test_std))
+    print('train - test :\n{}'.format(diff))
+
+    if PLOT_LEARN_CURVE:
+        plt.plot(train_sizes, train_mean, color = 'blue', label = 'training score')
+        plt.fill_between(train_sizes, train_mean + train_std, train_mean - train_std, alpha = 0.15, color = 'blue')
+        plt.plot(train_sizes, test_mean, color = 'red', label = 'validation score')
+        plt.fill_between(train_sizes, test_mean + test_std, test_mean - test_std, alpha = 0.15, color = 'red')
+        plt.plot(train_sizes, diff, color = 'black', label = 'train - val')
+        plt.ylim(0,1)
+        plt.legend(loc='best')
+        plt.title('dummies')
+        plt.show()
 
     StackingSubmission = pd.DataFrame({'PassengerId': PassengerId,
                                        'Survived': grid.predict(titanic_test_data_X)})
-    StackingSubmission.to_csv('StackingSubmission_without_RFE.csv', index=False, sep=',')
+    StackingSubmission.to_csv(r'result\rst {} - {}.csv'.format(time.strftime("%H.%M.%S"),time.strftime("%d.%m.%Y"))
+                              ,index=False, sep=',')
 
     select = RFE(RandomForestClassifier(n_estimators=300,max_depth=3,max_features='log2',min_samples_leaf=3))
     select.fit(X_train,y_train)
@@ -189,4 +183,5 @@ if __name__ == '__main__':
     print('confusion_natrix :{}'.format(confusion_matrix(y_test,grid.predict(X_test_rfe))))
     print(classification_report(y_test,grid.predict(X_test_rfe),target_names=['not survived','survived']))
     StackingSubmission = pd.DataFrame({'PassengerId': PassengerId, 'Survived': grid.predict(select.transform(titanic_test_data_X))})
-    StackingSubmission.to_csv('StackingSubmission.csv', index=False, sep=',')
+    StackingSubmission.to_csv(r'result\rst_RFE {} - {}.csv'.format(time.strftime("%H.%M.%S"),time.strftime("%d.%m.%Y"))
+                              ,index=False, sep=',')
